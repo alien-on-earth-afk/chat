@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Anonymous Chat</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: Arial, sans-serif;
+        }
+        
+        body {
+            background-color: #f5f5f5;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .chat-container {
+            max-width: 800px;
+            margin: 20px auto;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            display: flex;
+            flex-direction: column;
+            height: calc(100vh - 40px);
+            width: 100%;
+        }
+        
+        .chat-header {
+            padding: 15px;
+            background: #4a69bd;
+            color: white;
+            border-top-left-radius: 10px;
+            border-top-right-radius: 10px;
+            text-align: center;
+        }
+        
+        .chat-messages {
+            padding: 15px;
+            overflow-y: auto;
+            flex-grow: 1;
+        }
+        
+        .message {
+            margin-bottom: 15px;
+            padding: 10px 15px;
+            border-radius: 5px;
+            max-width: 70%;
+            word-wrap: break-word;
+            position: relative;
+        }
+        
+        .user-message {
+            background-color: #e3f2fd;
+            margin-left: auto;
+            border-bottom-right-radius: 0;
+        }
+        
+        .other-message {
+            background-color: #f1f1f1;
+            margin-right: auto;
+            border-bottom-left-radius: 0;
+        }
+        
+        .message-time {
+            font-size: 0.7em;
+            color: #888;
+            margin-top: 5px;
+            text-align: right;
+        }
+        
+        .online-count {
+            font-size: 0.8em;
+            margin-top: 5px;
+        }
+        
+        .chat-input {
+            display: flex;
+            padding: 15px;
+            background: #f9f9f9;
+            border-bottom-left-radius: 10px;
+            border-bottom-right-radius: 10px;
+        }
+        
+        #message-input {
+            flex-grow: 1;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            outline: none;
+        }
+        
+        #send-button {
+            padding: 10px 15px;
+            margin-left: 10px;
+            background: #4a69bd;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        
+        #send-button:hover {
+            background: #3b5998;
+        }
+
+        .nickname {
+            font-weight: bold;
+            margin-bottom: 3px;
+        }
+
+        .color-1 { color: #e74c3c; }
+        .color-2 { color: #3498db; }
+        .color-3 { color: #2ecc71; }
+        .color-4 { color: #f39c12; }
+        .color-5 { color: #9b59b6; }
+        .color-6 { color: #1abc9c; }
+    </style>
+</head>
+<body>
+    <div class="chat-container">
+        <div class="chat-header">
+            <h2>Anonymous Chat</h2>
+            <div class="online-count">Users online: <span id="online-users">0</span></div>
+        </div>
+        <div class="chat-messages" id="chat-messages"></div>
+        <div class="chat-input">
+            <input type="text" id="message-input" placeholder="Type a message..." autocomplete="off">
+            <button id="send-button">Send</button>
+        </div>
+    </div>
+
+    <!-- Firebase App (the core Firebase SDK) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/9.6.11/firebase-app-compat.min.js"></script>
+    <!-- Firebase Database -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/9.6.11/firebase-database-compat.min.js"></script>
+
+    <script>
+        // Initialize Firebase with your config
+        const firebaseConfig = {
+            apiKey: "AIzaSyACECKbMYTGmVR16brPoPG_RMIfgg8pu8U",
+            authDomain: "aliennode.firebaseapp.com",
+            databaseURL: "https://aliennode-default-rtdb.asia-southeast1.firebasedatabase.app",
+            projectId: "aliennode",
+            storageBucket: "aliennode.firebasestorage.app",
+            messagingSenderId: "703412476550",
+            appId: "1:703412476550:web:48670ac9771f288cab0f07",
+            measurementId: "G-Y014FDLH7G"
+        };
+        
+        // Initialize Firebase
+        firebase.initializeApp(firebaseConfig);
+        
+        // Get a reference to the database service
+        const database = firebase.database();
+        
+        // DOM elements
+        const chatMessages = document.getElementById('chat-messages');
+        const messageInput = document.getElementById('message-input');
+        const sendButton = document.getElementById('send-button');
+        const onlineUsersElement = document.getElementById('online-users');
+        
+        // Generate a random nickname for this session
+        const nicknames = ["Cat", "Fox", "Wolf", "Rabbit", "Bear", "Tiger", "Eagle", "Dolphin", "Panda", "Lion"];
+        const nickname = nicknames[Math.floor(Math.random() * nicknames.length)] + Math.floor(Math.random() * 1000);
+        const colorClass = "color-" + (Math.floor(Math.random() * 6) + 1);
+        
+        // User presence
+        const connectedRef = database.ref(".info/connected");
+        const presenceRef = database.ref("presence");
+        let myPresenceRef;
+        
+        connectedRef.on("value", (snap) => {
+            if (snap.val() === true) {
+                // User is connected
+                myPresenceRef = presenceRef.push(true);
+                
+                // Remove from presence list when disconnected
+                myPresenceRef.onDisconnect().remove();
+            }
+        });
+        
+        // Get online users count
+        presenceRef.on("value", (snap) => {
+            onlineUsersElement.textContent = snap.numChildren();
+        });
+        
+        // Functions to handle messages
+        function sendMessage() {
+            const message = messageInput.value.trim();
+            if (message !== "") {
+                const timestamp = Date.now();
+                database.ref("messages").push({
+                    text: message,
+                    timestamp: timestamp,
+                    nickname: nickname
+                });
+                messageInput.value = "";
+            }
+        }
+        
+        // Send message when button is clicked
+        sendButton.addEventListener("click", sendMessage);
+        
+        // Send message when Enter key is pressed
+        messageInput.addEventListener("keypress", (event) => {
+            if (event.key === "Enter") {
+                sendMessage();
+            }
+        });
+        
+        // Display messages from the database
+        database.ref("messages").orderByChild("timestamp").limitToLast(100).on("child_added", (snapshot) => {
+            const message = snapshot.val();
+            displayMessage(message);
+            
+            // Auto-scroll to the newest message
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        });
+        
+        function displayMessage(message) {
+            const messageElement = document.createElement("div");
+            const isMyMessage = message.nickname === nickname;
+            
+            messageElement.className = `message ${isMyMessage ? "user-message" : "other-message"}`;
+            
+            // Nickname with color
+            const nicknameElement = document.createElement("div");
+            nicknameElement.className = `nickname ${isMyMessage ? colorClass : "color-" + (message.nickname.charCodeAt(0) % 6 + 1)}`;
+            nicknameElement.textContent = message.nickname;
+            
+            // Message text
+            const textElement = document.createElement("div");
+            textElement.textContent = message.text;
+            
+            // Time
+            const timeElement = document.createElement("div");
+            timeElement.className = "message-time";
+            timeElement.textContent = formatTime(message.timestamp);
+            
+            // Append all elements
+            messageElement.appendChild(nicknameElement);
+            messageElement.appendChild(textElement);
+            messageElement.appendChild(timeElement);
+            
+            chatMessages.appendChild(messageElement);
+        }
+        
+        function formatTime(timestamp) {
+            const date = new Date(timestamp);
+            const hours = date.getHours().toString().padStart(2, "0");
+            const minutes = date.getMinutes().toString().padStart(2, "0");
+            return `${hours}:${minutes}`;
+        }
+        
+        // Focus on input field when the page loads
+        window.onload = () => {
+            messageInput.focus();
+        };
+    </script>
+</body>
+</html>
